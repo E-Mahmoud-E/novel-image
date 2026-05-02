@@ -45,65 +45,66 @@ def upload_to_github(image_bytes, file_name):
     return None
 
 def process_factory():
-    """المحرك الأساسي للمصنع"""
-    # ⚠️ ملاحظة: تأكد من اسم الـ Collection الخاص بك (هنا افترضت أنه 'descriptions')
-    docs = db.collection('Chapters').stream()
-
+    docs = db.collection('descriptions').stream()
     print("🚀 بدء فحص الفصول في Firestore...")
 
     for doc in docs:
         doc_ref = doc.reference
         data = doc.to_dict()
         scenes = data.get('scenes', [])
-        ch_num = data.get('id', '0')
+        ch_num = data.get('chapter_number', '0')
 
-        # سنقوم بتحديث قائمة المشاهد داخل الفصل إذا لزم الأمر
         updated_scenes = []
         has_new_images = False
 
         for scene in scenes:
-            # 🔍 فحص هل الصورة لها رابط مسبقاً؟ (استخدم اسم الحقل الحقيقي عندك)
             existing_url = scene.get('image_url') or scene.get('url')
-            
             if existing_url:
-                print(f"⏩ تخطي: فصل {ch_num} - الصورة موجودة بالفعل.")
+                print(f"⏩ تخطي: فصل {ch_num} - الصورة موجودة.")
                 updated_scenes.append(scene)
                 continue
 
-            # 🎨 إذا لم يجد رابطاً، يبدأ الرسم
             p_index = scene.get('paragraph_index', 0)
             subject = scene.get('subject_name', 'Scene').replace(" ", "")
             image_name = f"Ch{ch_num}_{p_index}_{subject}.png"
-
-            print(f"🎨 جاري رسم صورة جديدة: {image_name}...")
             
             visual_desc = scene.get('visual_description', '')
             safe_prompt = urllib.parse.quote(visual_desc)
             img_api_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=1024&nologo=true"
 
-            try:
-                img_res = requests.get(img_api_url, timeout=60)
-                if img_res.status_code == 200:
-                    # الرفع لـ GitHub
-                    github_link = upload_to_github(img_res.content, image_name)
+            # --- 👇 تطوير: محاولة الرسم أكثر من مرة في حال حدوث Timeout ---
+            success = False
+            for attempt in range(3): # سيحاول 3 مرات
+                try:
+                    print(f"🎨 محاولة {attempt+1}: رسم صورة {image_name}...")
+                    img_res = requests.get(img_api_url, timeout=120) # زدنا الوقت لـ 120 ثانية
                     
-                    if github_link:
-                        print(f"✅ تم الرفع بنجاح: {github_link}")
-                        # إضافة الرابط للمشهد لكي لا يتم رسمه مجدداً
-                        scene['image_url'] = github_link
-                        has_new_images = True
+                    if img_res.status_code == 200:
+                        github_link = upload_to_github(img_res.content, image_name)
+                        if github_link:
+                            print(f"✅ تم الرفع: {github_link}")
+                            scene['image_url'] = github_link
+                            has_new_images = True
+                            success = True
+                            break # نجحنا! اخرج من حلقة المحاولات
                     else:
-                        print(f"❌ فشل الرفع لـ GitHub: {image_name}")
-            except Exception as e:
-                print(f"❌ خطأ أثناء معالجة المشهد: {e}")
+                        print(f"⚠️ السيرفر رد برمز: {img_res.status_code}، سأحاول مجدداً..")
+                
+                except requests.exceptions.Timeout:
+                    print(f"⏳ انتهى الوقت (Timeout) في المحاولة {attempt+1}..")
+                except Exception as e:
+                    print(f"❌ خطأ غير متوقع: {e}")
+                
+                time.sleep(5) # انتظر 5 ثوانٍ قبل المحاولة التالية لراحة السيرفر
+
+            if not success:
+                print(f"❌ فشل رسم المشهد {p_index} بعد 3 محاولات، سأنتقل للتالي.")
             
             updated_scenes.append(scene)
-            time.sleep(5) # انتظار بسيط لتجنب الضغط على السيرفر
 
-        # تحديث Firestore بالروابط الجديدة (اختياري لكن مفيد جداً)
         if has_new_images:
             doc_ref.update({'scenes': updated_scenes})
-            print(f"📝 تم تحديث بيانات الفصل {ch_num} في Firestore.")
+            print(f"📝 تم تحديث الفصل {ch_num} في Firestore.")
 
 if __name__ == "__main__":
     process_factory()
