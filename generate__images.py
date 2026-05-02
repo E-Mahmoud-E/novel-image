@@ -45,7 +45,7 @@ def upload_to_github(image_bytes, file_name):
     return None
 
 def process_factory():
-    docs = db.collection('descriptions').stream()
+    docs = db.collection('Chapters').stream()
     print("🚀 بدء فحص الفصول في Firestore...")
 
     for doc in docs:
