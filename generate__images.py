@@ -98,7 +98,7 @@ def process_factory():
                 print(f"❌ خطأ أثناء معالجة المشهد: {e}")
             
             updated_scenes.append(scene)
-            time.sleep(2) # انتظار بسيط لتجنب الضغط على السيرفر
+            time.sleep(5) # انتظار بسيط لتجنب الضغط على السيرفر
 
         # تحديث Firestore بالروابط الجديدة (اختياري لكن مفيد جداً)
         if has_new_images:
