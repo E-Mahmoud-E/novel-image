@@ -7,61 +7,103 @@ import urllib.parse
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# 1. إعداد الاتصال بـ Firestore باستخدام المفتاح السري
+# --- 1. إعداد الاتصال بـ Firestore ---
 if not firebase_admin._apps:
-    # جلب المفتاح من أسرار GitHub
-    cred_json = json.loads(os.getenv("FIREBASE_KEY"))
-    cred = credentials.Certificate(cred_json)
-    firebase_admin.initialize_app(cred)
+    # سيقرأ المفتاح من الـ Secrets التي وضعتها في GitHub
+    try:
+        cred_json = json.loads(os.getenv("FIREBASE_KEY"))
+        cred = credentials.Certificate(cred_json)
+        firebase_admin.initialize_app(cred)
+    except Exception as e:
+        print(f"❌ خطأ في إعدادات Firebase: {e}")
 
 db = firestore.client()
 
-# 2. إعدادات GitHub (كما فعلنا سابقاً)
+# --- 2. إعدادات GitHub ---
 GITHUB_TOKEN = os.getenv("MY_GITHUB_TOKEN")
 REPO_OWNER = "E-Mahmoud-E"
 REPO_NAME = "novel-image"
 
 def upload_to_github(image_bytes, file_name):
+    """وظيفة الرفع لـ GitHub واستخراج الرابط المباشر"""
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{file_name}"
     encoded_content = base64.b64encode(image_bytes).decode("ascii")
     
-    # التحقق إذا كان الملف موجوداً لتحديثه
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Content-Type": "application/json"}
+    
+    # فحص إذا كان الملف موجوداً لتحديثه بدلاً من إنشاء واحد جديد
     res = requests.get(url, headers=headers)
     sha = res.json().get('sha') if res.status_code == 200 else None
 
-    data = {"message": f"توليد صورة: {file_name}", "content": encoded_content}
+    data = {"message": f"توليد آلي للصورة: {file_name}", "content": encoded_content}
     if sha: data["sha"] = sha
     
-    response = requests.put(url, json=data, headers=headers)
-    return response.status_code in [200, 201]
+    put_res = requests.put(url, json=data, headers=headers)
+    if put_res.status_code in [200, 201]:
+        # إرجاع الرابط المباشر للصورة (Raw URL)
+        return f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/main/{file_name}"
+    return None
 
-def process_from_firestore():
-    # هنا ضع اسم الـ Collection الخاص بك في Firestore (مثلاً 'chapters_descriptions')
+def process_factory():
+    """المحرك الأساسي للمصنع"""
+    # ⚠️ ملاحظة: تأكد من اسم الـ Collection الخاص بك (هنا افترضت أنه 'descriptions')
     docs = db.collection('descriptions').stream()
 
+    print("🚀 بدء فحص الفصول في Firestore...")
+
     for doc in docs:
+        doc_ref = doc.reference
         data = doc.to_dict()
-        # نفترض أن كل وثيقة تحتوي على قائمة 'scenes' كما في ملفاتك السابقة
         scenes = data.get('scenes', [])
         ch_num = data.get('chapter_number', '0')
 
+        # سنقوم بتحديث قائمة المشاهد داخل الفصل إذا لزم الأمر
+        updated_scenes = []
+        has_new_images = False
+
         for scene in scenes:
-            p_index = scene['paragraph_index']
-            subject = scene['subject_name'].replace(" ", "")
+            # 🔍 فحص هل الصورة لها رابط مسبقاً؟ (استخدم اسم الحقل الحقيقي عندك)
+            existing_url = scene.get('image_url') or scene.get('url')
+            
+            if existing_url:
+                print(f"⏩ تخطي: فصل {ch_num} - الصورة موجودة بالفعل.")
+                updated_scenes.append(scene)
+                continue
+
+            # 🎨 إذا لم يجد رابطاً، يبدأ الرسم
+            p_index = scene.get('paragraph_index', 0)
+            subject = scene.get('subject_name', 'Scene').replace(" ", "")
             image_name = f"Ch{ch_num}_{p_index}_{subject}.png"
 
-            print(f"🎨 رسم وصورة لـ: {image_name}")
+            print(f"🎨 جاري رسم صورة جديدة: {image_name}...")
             
-            safe_prompt = urllib.parse.quote(scene['visual_description'])
-            img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=1024&nologo=true"
+            visual_desc = scene.get('visual_description', '')
+            safe_prompt = urllib.parse.quote(visual_desc)
+            img_api_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=1024&nologo=true"
 
-            img_res = requests.get(img_url)
-            if img_res.status_code == 200:
-                if upload_to_github(img_res.content, image_name):
-                    print(f"✅ تم الرفع: {image_name}")
+            try:
+                img_res = requests.get(img_api_url, timeout=60)
+                if img_res.status_code == 200:
+                    # الرفع لـ GitHub
+                    github_link = upload_to_github(img_res.content, image_name)
+                    
+                    if github_link:
+                        print(f"✅ تم الرفع بنجاح: {github_link}")
+                        # إضافة الرابط للمشهد لكي لا يتم رسمه مجدداً
+                        scene['image_url'] = github_link
+                        has_new_images = True
+                    else:
+                        print(f"❌ فشل الرفع لـ GitHub: {image_name}")
+            except Exception as e:
+                print(f"❌ خطأ أثناء معالجة المشهد: {e}")
             
-            time.sleep(2)
+            updated_scenes.append(scene)
+            time.sleep(2) # انتظار بسيط لتجنب الضغط على السيرفر
+
+        # تحديث Firestore بالروابط الجديدة (اختياري لكن مفيد جداً)
+        if has_new_images:
+            doc_ref.update({'scenes': updated_scenes})
+            print(f"📝 تم تحديث بيانات الفصل {ch_num} في Firestore.")
 
 if __name__ == "__main__":
-    process_from_firestore()
+    process_factory()
