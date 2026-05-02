@@ -47,7 +47,7 @@ def upload_to_github(image_bytes, file_name):
 def process_factory():
     """المحرك الأساسي للمصنع"""
     # ⚠️ ملاحظة: تأكد من اسم الـ Collection الخاص بك (هنا افترضت أنه 'descriptions')
-    docs = db.collection('descriptions').stream()
+    docs = db.collection('Chapters').stream()
 
     print("🚀 بدء فحص الفصول في Firestore...")
 
@@ -55,7 +55,7 @@ def process_factory():
         doc_ref = doc.reference
         data = doc.to_dict()
         scenes = data.get('scenes', [])
-        ch_num = data.get('chapter_number', '0')
+        ch_num = data.get('id', '0')
 
         # سنقوم بتحديث قائمة المشاهد داخل الفصل إذا لزم الأمر
         updated_scenes = []
