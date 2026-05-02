@@ -66,7 +66,7 @@ def process_factory():
 
         for scene in scenes:
             # 🔍 فحص هل الصورة موجودة مسبقاً في أي حقل (image_url أو url أو link)
-            if any(scene.get(k) for k in ['image_url', 'url', 'link']):
+            if scene.get('image_url'):
                 print(f"  ⏩ تخطي المشهد {scene.get('paragraph_index')}: موجود بالفعل.")
                 updated_scenes.append(scene)
                 continue
