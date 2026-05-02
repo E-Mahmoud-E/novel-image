@@ -1,26 +1,24 @@
 name: Generate Novel Images
 on:
-  workflow_dispatch: # هذا يسمح لك بتشغيل الكود يدوياً بضغطة زر
+  workflow_dispatch: 
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3 # يسحب ملفاتك من جيت هاب لكي يعمل عليها
+        uses: actions/checkout@v4 # تم التحديث هنا
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # تم التحديث هنا
         with:
-          python-version: '3.9'
+          python-version: '3.11' # استخدمنا نسخة أحدث من بايثون أيضاً
 
       - name: Install Requirements
-        run: pip install requests firebase-admin # تثبيت المكتبات اللازمة
+        run: pip install requests firebase-admin 
 
       - name: Run Script
         env:
-          # تأكد أن هذه الأسماء مطابقة تماماً لما وضعته في الـ Secrets
           MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
           FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
-        # 👇 إذا سميت ملف الكود اسماً مختلفاً، غيره هنا
-        run: python novel-image/.github/workflows/generate__images.py
+        run: python generate_images.py
