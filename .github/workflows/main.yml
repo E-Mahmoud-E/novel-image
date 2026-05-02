@@ -7,18 +7,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4 # تم التحديث من v3 إلى v4
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # تم التحديث من v4 إلى v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11' 
 
       - name: Install Requirements
-        run: pip install requests firebase-admin 
+        # أضفنا مكتبة cloudinary هنا
+        run: pip install requests firebase-admin cloudinary
 
       - name: Run Script
         env:
-          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          # مفتاح Firebase الأساسي
           FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
+          
+          # مفاتيح Cloudinary الجديدة (يجب إضافتها في Secrets المستودع)
+          CLOUDINARY_NAME: ${{ secrets.CLOUDINARY_NAME }}
+          CLOUDINARY_KEY: ${{ secrets.CLOUDINARY_KEY }}
+          CLOUDINARY_SECRET: ${{ secrets.CLOUDINARY_SECRET }}
+          
+          # إذا كنت لا تزال تستخدم التوكن في جزء من الكود اتركه، وإلا يمكنك حذفه
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          
         run: python generate__images.py
