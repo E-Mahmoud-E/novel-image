@@ -52,7 +52,7 @@ def process_factory():
         doc_ref = doc.reference
         data = doc.to_dict()
         scenes = data.get('scenes', [])
-        ch_num = data.get('chapter_number', '0')
+        ch_num = data.get('id', '0')
 
         updated_scenes = []
         has_new_images = False
