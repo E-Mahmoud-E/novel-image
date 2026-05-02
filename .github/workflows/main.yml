@@ -7,12 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4 # تم التحديث هنا
+        uses: actions/checkout@v4 # تم التحديث من v3 إلى v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # تم التحديث هنا
+        uses: actions/setup-python@v5 # تم التحديث من v4 إلى v5
         with:
-          python-version: '3.11' # استخدمنا نسخة أحدث من بايثون أيضاً
+          python-version: '3.11' 
 
       - name: Install Requirements
         run: pip install requests firebase-admin 
