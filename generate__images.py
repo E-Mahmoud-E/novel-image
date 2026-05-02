@@ -58,9 +58,11 @@ def process_factory():
         has_new_images = False
 
         for scene in scenes:
-            existing_url = scene.get('image_url') or scene.get('url')
+            # 🔍 فحص ذكي: ابحث عن الرابط في كل الحقول الممكنة (url أو image_url)
+            existing_url = scene.get('image_url') or scene.get('url') or scene.get('link')
+            
             if existing_url:
-                print(f"⏩ تخطي: فصل {ch_num} - الصورة موجودة.")
+                print(f"⏩ تخطي: فصل {ch_num} - المشهد {scene.get('paragraph_index')} موجود مسبقاً.")
                 updated_scenes.append(scene)
                 continue
 
@@ -76,8 +78,9 @@ def process_factory():
             success = False
             for attempt in range(3): # سيحاول 3 مرات
                 try:
-                    print(f"🎨 محاولة {attempt+1}: رسم صورة {image_name}...")
-                    img_res = requests.get(img_api_url, timeout=120) # زدنا الوقت لـ 120 ثانية
+                    print(f"🎨 جاري رسم صورة جديدة: {image_name}...")
+                    # قمنا بزيادة الوقت لـ 180 ثانية (3 دقائق) ليعطي فرصة كاملة للرسم
+                    img_res = requests.get(img_api_url, timeout=180) 
                     
                     if img_res.status_code == 200:
                         github_link = upload_to_github(img_res.content, image_name)
