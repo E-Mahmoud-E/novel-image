@@ -21,4 +21,4 @@ jobs:
         env:
           MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
           FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
-        run: python generate__images.py
+        run: python generate_images.py
