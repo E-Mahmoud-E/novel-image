@@ -1,0 +1,24 @@
+name: Run Separate Translation
+on:
+  workflow_dispatch: # تشغيل يدوياً من تداوب الأكشنز
+
+jobs:
+  translate_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' 
+
+      - name: Install Requirements
+        run: pip install firebase-admin openai
+
+      - name: Run Translator Script
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
+        run: python translate_chapters.py
