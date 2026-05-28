@@ -24,14 +24,14 @@ db = firestore.client()
 
 # --- 2. إعدادات Cloudinary (تأخذ من السحابة أو الثوابت محلياً) ---
 cloudinary.config( 
-    cloud_name = os.environ.get('CLOUDINARY_NAME', 'dnney0ffw'), 
-    api_key = os.environ.get('CLOUDINARY_KEY', '172942244898523'), 
-    api_secret = os.environ.get('CLOUDINARY_SECRET', 'vw9j3TFEaIVuEuiv3cEfiPruVLA'),
+    cloud_name = os.environ.get('CLOUDINARY_NAME'), 
+    api_key = os.environ.get('CLOUDINARY_KEY'), 
+    api_secret = os.environ.get('CLOUDINARY_SECRET'),
     secure = True
 )
 
 # اسم الرواية المستهدفة
-TARGET_NOVEL = "worldwide-simulation-era"
+TARGET_NOVEL = "Worldwide Simulation Era"
 
 def upload_to_cloudinary(image_content, file_name, novel_name):
     """رفع الصورة إلى مجلد خاص بالرواية في Cloudinary واسترجاع الرابط المباشر"""
