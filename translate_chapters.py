@@ -26,8 +26,7 @@ api_key = os.environ.get('OPENROUTER_API_KEY')
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
 # اسم الرواية المستهدفة
-TARGET_NOVEL = "worldwide-simulation-era"
-
+TARGET_NOVEL = "World Simulation Era"
 def process_translation():
     # جلب الفصول التي تم تحليلها بنجاح ولم يتم ترجمتها بعد
     chapters_query = db.collection('Chapters') \
@@ -37,8 +36,8 @@ def process_translation():
     
     docs = list(chapters_query)
     
-    # ترتيب الفصول رقمياً (chapter_1, chapter_2...)
-    docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id))))
+    # ترتيب الفصول رقمياً مع الحماية من قيم المعرفات التي لا تحوي أرقاماً
+    docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id)) or 0))
 
     print(f"🌍 بدء الترجمة المنفصلة لـ {len(docs)} فصل من رواية [{TARGET_NOVEL}]...")
 
@@ -105,7 +104,7 @@ def process_translation():
             })
 
             print(f"✅ تم ترجمة وحفظ الفصل {ch_num} سحابياً.")
-            time.sleep(1)
+            time.sleep(3)
 
         except Exception as e:
             print(f"❌ خطأ أثناء ترجمة الفصل {ch_num}: {e}")
