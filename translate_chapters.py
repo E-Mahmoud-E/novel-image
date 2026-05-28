@@ -23,7 +23,7 @@ db = firestore.client()
 # --- 2. إعداد عميل OpenRouter ---
 # يقرأ المفتاح من GitHub Secrets أو يستخدم المفتاح الثابت محلياً
 api_key = os.environ.get('OPENROUTER_API_KEY')
-client = OpenAI(base_url="https://openrouter.ai/api/v1")
+client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
 # اسم الرواية المستهدفة
 TARGET_NOVEL = "worldwide-simulation-era"
