@@ -4,38 +4,43 @@ import requests
 import urllib.parse
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 import cloudinary
 import cloudinary.uploader
 
-# --- 1. إعداد الاتصال بـ Firestore ---
-if not firebase_admin._apps:
-    try:
-        # قراءة المفتاح من GitHub Secrets
-        cred_json = json.loads(os.getenv("FIREBASE_KEY"))
-        cred = credentials.Certificate(cred_json)
-        firebase_admin.initialize_app(cred)
-    except Exception as e:
-        print(f"❌ خطأ في إعدادات Firebase: {e}")
-        exit(1)
+# --- 1. إعداد الاتصال بـ Firebase (يدعم المحلي و GitHub تلقائياً) ---
+if os.environ.get('FIREBASE_KEY'):
+    # العمل على GitHub Actions
+    cred_json = json.loads(os.environ.get('FIREBASE_KEY'))
+    cred = credentials.Certificate(cred_json)
+else:
+    # العمل محلياً على جهازك
+    cred_path = r"D:\Novel\worldwide-simulation-era\firestore-key.json"
+    cred = credentials.Certificate(cred_path)
 
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# --- 2. إعدادات Cloudinary (من GitHub Secrets) ---
+# --- 2. إعدادات Cloudinary (تأخذ من السحابة أو الثوابت محلياً) ---
 cloudinary.config( 
-  cloud_name = "dnney0ffw", 
-  api_key = "172942244898523", 
-  api_secret = "vw9j3TFEaIVuEuiv3cEfiPruVLA" ,
-  secure = True
+    cloud_name = os.environ.get('CLOUDINARY_NAME', 'dnney0ffw'), 
+    api_key = os.environ.get('CLOUDINARY_KEY', '172942244898523'), 
+    api_secret = os.environ.get('CLOUDINARY_SECRET', 'vw9j3TFEaIVuEuiv3cEfiPruVLA'),
+    secure = True
 )
 
-def upload_to_cloudinary(image_content, file_name):
-    """رفع الصورة إلى Cloudinary واسترجاع الرابط المباشر"""
+# اسم الرواية المستهدفة
+TARGET_NOVEL = "worldwide-simulation-era"
+
+def upload_to_cloudinary(image_content, file_name, novel_name):
+    """رفع الصورة إلى مجلد خاص بالرواية في Cloudinary واسترجاع الرابط المباشر"""
     try:
         public_id = os.path.splitext(file_name)[0]
         upload_result = cloudinary.uploader.upload(
             image_content,
             public_id = public_id,
-            folder = "novel_scenes", # المجلد داخل Cloudinary
+            folder = f"Novels/{novel_name}/Scenes", # تنظيم الملفات داخل مجلد الرواية
             overwrite = True,
             resource_type = "image"
         )
@@ -45,58 +50,65 @@ def upload_to_cloudinary(image_content, file_name):
         return None
 
 def process_factory():
-    collection_name = 'Chapters' 
-    # جلب جميع الوثائق
-    docs = list(db.collection(collection_name).stream())
+    # جلب فصول الرواية المستهدفة التي تم تحليلها بنجاح
+    chapters_query = db.collection('Chapters') \
+        .where(filter=FieldFilter('Novel_Name', '==', TARGET_NOVEL)) \
+        .where(filter=FieldFilter('is_analyzed', '==', True)) \
+        .stream()
     
-    # ترتيب الفصول لضمان التخطي الصحيح
-    try:
-        docs.sort(key=lambda x: int(x.to_dict().get('id', 0)))
-    except:
-        pass
+    docs = list(chapters_query)
+    
+    # ترتيب الفصول رقمياً
+    docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id)) or 0))
 
-    print(f"🚀 بدء الفحص... تم العثور على ({len(docs)}) وثيقة.")
+    print(f"🚀 بدء فحص الرسم... تم العثور على ({len(docs)}) فصل جاهز للرسم.")
 
     for doc in docs:
-        data = doc.to_dict()
-        ch_id_raw = data.get('id', '0')
-        
-        # تحويل الرقم للمقارنة
-        try:
-            ch_num = int(ch_id_raw)
-        except ValueError:
-            ch_num = 0
+        ch_num_str = ''.join(filter(str.isdigit, doc.id))
+        if not ch_num_str: continue
+        ch_num = int(ch_num_str)
 
         # --- 🛡️ تخطي أول 250 فصل ---
         if ch_num <= 250:
             continue
 
-        doc_ref = doc.reference
-        scenes = data.get('scenes', [])
-        has_new_images = False
-        updated_scenes = []
+        doc_data = doc.to_dict()
+        analysis_data = doc_data.get('analysis_data', {})
+        
+        # قراءة المشاهد من الحقل الجديد المعالج بواسطة أداة التحليل
+        scenes = analysis_data.get('scenes', [])
+        if not scenes:
+            continue
 
-        print(f"📖 جاري معالجة الفصل: {ch_num}")
+        has_new_images = False
+        print(f"📖 جاري فحص ورسم صور الفصل: {ch_num}")
 
         for scene in scenes:
             current_url = scene.get('image_url', '')
             
-            # تخطي إذا كانت الصورة موجودة بالفعل على Cloudinary
+            # تخطي إذا كانت الصورة موجودة ومرفوعة بالفعل على Cloudinary
             if current_url and "cloudinary.com" in current_url:
-                updated_scenes.append(scene)
                 continue
 
             p_index = scene.get('paragraph_index', 0)
             subject = scene.get('subject_name', 'Scene').replace(" ", "_")
             image_name = f"Ch{ch_num}_{p_index}_{subject}"
             
-            visual_desc = scene.get('visual_description', '')
-            if not visual_desc:
-                updated_scenes.append(scene)
+            raw_visual_desc = scene.get('visual_description', '')
+            if not raw_visual_desc:
                 continue
 
+            # --- 🛡️ حقن الملامح الذكورية للبطل وتعديل الـ Prompt ---
+            subject_lower = subject.lower()
+            if "hero" in subject_lower or "protagonist" in subject_lower or "lin_fan" in subject_lower:
+                # إجبار النموذج على رسم ملامح ذكورية حادة لمنع خطأ "البطل الأنثى"
+                final_desc = f"masculine facial features, handsome male protagonist, alpha male, ancient robes, {raw_visual_desc}"
+                print(f"  ⚡ تم رصد شخصية البطل. تم حقن القواعد الذكورية في الوصف البصري.")
+            else:
+                final_desc = raw_visual_desc
+
             # توليد الصورة عبر Pollinations AI
-            safe_prompt = urllib.parse.quote(visual_desc)
+            safe_prompt = urllib.parse.quote(final_desc)
             img_api_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=1024&nologo=true"
 
             try:
@@ -104,11 +116,11 @@ def process_factory():
                 img_res = requests.get(img_api_url, timeout=120) 
                 
                 if img_res.status_code == 200:
-                    # الرفع لـ Cloudinary
-                    cloudinary_link = upload_to_cloudinary(img_res.content, image_name)
+                    # الرفع لـ Cloudinary مع تحديد مجلد الرواية
+                    cloudinary_link = upload_to_cloudinary(img_res.content, image_name, TARGET_NOVEL)
                     
                     if cloudinary_link:
-                        print(f"  ✅ تم الرفع: {cloudinary_link}")
+                        print(f"  ✅ تم الرفع والتحديث: {cloudinary_link}")
                         scene['image_url'] = cloudinary_link
                         has_new_images = True
                     else:
@@ -119,12 +131,13 @@ def process_factory():
             except Exception as e:
                 print(f"  ❌ خطأ فني: {e}")
             
-            updated_scenes.append(scene)
-
-        # حفظ التعديلات في Firestore
+        # تحديث الحقل السحابي المدمج في Firestore إذا تم توليد صور جديدة
         if has_new_images:
-            doc_ref.update({'scenes': updated_scenes})
-            print(f"📝 تم تحديث بيانات الفصل {ch_num} بنجاح.")
+            doc.reference.update({
+                'analysis_data.scenes': scenes,
+                'is_drawn': True
+            })
+            print(f"📝 تم تحديث مستند الفصل {ch_num} بالروابط الجديدة.")
 
 if __name__ == "__main__":
     process_factory()
