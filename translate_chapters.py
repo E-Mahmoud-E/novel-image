@@ -38,7 +38,7 @@ def process_translation():
     docs = list(chapters_query)
     
     # ترتيب الفصول رقمياً (chapter_1, chapter_2...)
-    docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id)) or 0))
+    docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id))))
 
     print(f"🌍 بدء الترجمة المنفصلة لـ {len(docs)} فصل من رواية [{TARGET_NOVEL}]...")
 
