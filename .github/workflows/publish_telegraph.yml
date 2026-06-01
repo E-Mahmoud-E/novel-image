@@ -1,4 +1,4 @@
-Name: Deploy Chapters to Telegraph
+name: Deploy Chapters to Telegraph
 on:
   workflow_dispatch: # يتيح لك تشغيل السكربت يدوياً بضغطة زر من تبويب Actions في GitHub
 
