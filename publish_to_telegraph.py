@@ -1,18 +1,17 @@
 import os
 import json
 import time
-import requests
+import requests # تم إضافة المكتبة لإرسال الرسائل عبر الـ API
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
+from telegraph import Telegraph
 
-# --- 1. إعداد الاتصال بـ Firebase (يدعم المحلي و GitHub تلقائياً) ---
+# --- 1. إعداد الاتصال بـ Firebase ---
 if os.environ.get('FIREBASE_KEY'):
-    # العمل سحابياً على GitHub Actions
     cred_json = json.loads(os.environ.get('FIREBASE_KEY'))
     cred = credentials.Certificate(cred_json)
 else:
-    # العمل محلياً على جهازك
     cred_path = r"D:\Novel\worldwide-simulation-era\firestore-key.json"
     cred = credentials.Certificate(cred_path)
 
@@ -20,77 +19,49 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# --- 2. إعدادات الحماية والبيانات الرسمية لقناتك ---
-# يقرأ التوكن بأمان من GitHub Secrets، وفي حال العمل المحلي يمكنك وضعه كمتغير بيئة أو استبداله مؤقتاً هنا
-TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_ACCESS_TOKEN', 'YOUR_LOCAL_TOKEN_HERE')
+# --- 2. إعدادات تليجرام المضافة (تُقرأ بأمان من بيئة العمل) ---
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
+
+# --- 3. إعدادات Telegraph ---
+telegraph_client = Telegraph()
+TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_ACCESS_TOKEN')
+if TELEGRAPH_TOKEN:
+    telegraph_client.init_app(access_token=TELEGRAPH_TOKEN)
+else:
+    telegraph_client.create_account(short_name='Ma7moud')
+
 TARGET_NOVEL = "worldwide-simulation-era"
 AUTHOR_NAME = "Ma7moud Elmahdy"
 AUTHOR_URL = "https://t.me/NewStyleNovel"
 
-def create_telegraph_page(title, html_content):
-    """إنشاء صفحة على Telegraph باستخدام نظام الـ API الرسمي والمحمي"""
-    url = "https://api.telegra.ph/createPage"
-    
-    payload = {
-        'access_token': TELEGRAPH_TOKEN,
-        'title': title,
-        'author_name': AUTHOR_NAME,
-        'author_url': AUTHOR_URL,
-        'content': json.dumps(html_content),
-        'return_content': 'true'
-    }
-    
-    try:
-        response = requests.post(url, data=payload, timeout=30)
-        res_data = response.json()
-        if res_data.get('ok'):
-            return res_data['result']['url']
-        else:
-            print(f"  ❌ خطأ من سيرفر Telegraph: {res_data.get('error')}")
-            return None
-    except Exception as e:
-        print(f"  ❌ خطأ أثناء الاتصال بـ Telegraph API: {e}")
-        return None
-
 def convert_to_telegraph_nodes(paragraphs, extracted_scenes):
-    """تحويل النص والصور المدمجة (القديمة والجديدة) إلى هيكل العناصر (Nodes) المعتمد في تليجرام"""
     nodes = []
-    
     for index, text in enumerate(paragraphs):
-        # إضافة نص الفقرة الحالية كعنصر P (نص عادي)
         nodes.append({"tag": "p", "children": [text]})
-        
-        # البحث عن مشهد أو صورة مخصصة لتكون بَعْد هذه الفقرة (تطابق الفهرسة البرمجية يبدأ من 1)
         scene_at_this_p = next((s for s in extracted_scenes if int(s.get('paragraph_index', 0)) == index + 1), None)
-        
         if scene_at_this_p and scene_at_this_p.get('image_url'):
-            # إضافة الصورة إلى مستند التليجرام
             nodes.append({
                 "tag": "img",
                 "attrs": {"src": scene_at_this_p['image_url']}
             })
-            # إضافة عنوان فرعي مائل تحت الصورة يحمل اسم المشهد البصري
             if scene_at_this_p.get('subject_name'):
                 nodes.append({
-                    "tag": "figcaption",
-                    "children": [f"Visual Scene: {scene_at_this_p['subject_name']}"]
+                    "tag": "p",
+                    "children": [{"tag": "i", "children": [f"Visual Scene: {scene_at_this_p['subject_name']}"]}]
                 })
-                
     return nodes
 
 def process_telegraph_publishing():
-    # جلب فصول الرواية المستهدفة التي تم ترجمتها بنجاح ولم تنشر بعد على تليجرام
     chapters_query = db.collection('Chapters') \
         .where(filter=FieldFilter('Novel_Name', '==', TARGET_NOVEL)) \
         .where(filter=FieldFilter('is_translated', '==', True)) \
         .stream()
     
     docs = list(chapters_query)
-    
-    # ترتيب الفصول رقمياً لضمان النشر المتسلسل الصحيح
     docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id)) or 0))
 
-    print(f"🚀 بدء تجهيز ونشر الفصول على Telegraph... تم العثور على ({len(docs)}) فصل جاهز.")
+    print(f"🚀 بدء تجهيز ونشر الفصول... تم العثور على ({len(docs)}) فصل.")
 
     for doc in docs:
         doc_data = doc.to_dict()
@@ -98,23 +69,20 @@ def process_telegraph_publishing():
         if not ch_num_str: continue
         ch_num = int(ch_num_str)
         
-        # تخطي إذا كان الفصل منشورا مسبقا لمنع التكرار واستهلاك الـ API
         if doc_data.get('is_published_telegraph'):
             continue
 
-        print(f"📦 جاري تحضير وصياغة مستند الفصل [{ch_num}] سحابياً...")
+        print(f"📦 جاري تحضير وصياغة مستند الفصل [{ch_num}]...")
         
         content_ar = doc_data.get('content_ar', '')
         if not content_ar:
-            print(f"  ⚠️ الفصل {ch_num} لا يحتوي على نص عربي مترجم، تخطي التجهيز.")
+            print(f"  ⚠️ الفصل {ch_num} لا يحتوي على نص عربي مترجم، تخطي.")
             continue
 
-        # تنظيف وتقسيم النص العربي إلى فقرات حقيقية ونظيفة
         paragraphs = [p.strip() for p in content_ar.split('\n') if p.strip() != ""]
         
-        # دمج الصور القديمة والجديدة معاً لضمان عدم اختفاء أي مخرج بصري قمت بتوليده
-        old_scenes = doc_data.get('scenes', [])
-        new_scenes = doc_data.get('analysis_data', {}).get('scenes', [])
+        old_scenes = doc_data.get('scenes', []) or []
+        new_scenes = doc_data.get('analysis_data', {}).get('scenes', []) or []
         
         all_scenes_map = {}
         for scene in (old_scenes + new_scenes):
@@ -122,27 +90,52 @@ def process_telegraph_publishing():
                 all_scenes_map[int(scene['paragraph_index'])] = scene
         
         extracted_scenes = list(all_scenes_map.values())
-
-        # تحويل المحتوى المدمج بالكامل إلى هيكل الـ Nodes الذي يتطلبه التليجرام
         telegraph_nodes = convert_to_telegraph_nodes(paragraphs, extracted_scenes)
-        
-        # صياغة عنوان الصفحة الاحترافي المكتوب في أعلى المقال
         page_title = f"{doc_data.get('title', f'الفصل {ch_num}')}"
 
-        # إرسال طلب النشر لـ Telegraph API
-        telegraph_url = create_telegraph_page(page_title, telegraph_nodes)
-
-        if telegraph_url:
-            # تحديث حقول المستند في Firestore لتسجيل رابط النشر وتأكيده
+        try:
+            # أولاً: توليد صفحة المعاينة الفورية
+            response = telegraph_client.create_page(
+                title=page_title,
+                author_name=AUTHOR_NAME,
+                author_url=AUTHOR_URL,
+                content=telegraph_nodes
+            )
+            telegraph_url = response['url']
+            print(f"  ✅ تم إنشاء رابط Telegraph: {telegraph_url}")
+            
+            # ثانياً (الزيادة هنا): إرسال الرابط فوراً إلى قناة التليجرام عبر البوت
+            if TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID:
+                telegram_api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                
+                # نص الرسالة التي ستظهر للمشاهدين في القناة
+                message_text = f"📢 *تمت إضافة فصل جديد للرواية!*\n\n📖 *{page_title}*\n\nاقرأ الآن مباشرة عبر المعاينة الفورية السريعة وبدون إعلانات:\n{telegraph_url}"
+                
+                payload = {
+                    "chat_id": TELEGRAM_CHANNEL_ID,
+                    "text": message_text,
+                    "parse_mode": "Markdown"
+                }
+                
+                telegram_res = requests.post(telegram_api_url, json=payload, timeout=15)
+                if telegram_res.status_code == 200:
+                    print("  📢 تم إرسال الإشعار بنجاح إلى قناة تليجرام.")
+                else:
+                    print(f"  ❌ فشل إرسال الإشعار للقناة. كود: {telegram_res.status_code}")
+            else:
+                print("  ⚠️ تخطي إرسال الإشعار لتليجرام لعدم وجود توكن البوت أو معرف القناة في البيئة الحالية (عمل محلي).")
+            
+            # ثالثاً: تحديث المستند في Firestore بعد النشر الفعلي والنجاح كاملاً
             doc.reference.update({
                 "telegraph_url": telegraph_url,
                 "is_published_telegraph": True,
                 "published_telegraph_at": firestore.SERVER_TIMESTAMP
             })
-            print(f"  ✅ تم النشر بنجاح وحفظ الرابط في Firestore: {telegraph_url}")
-            time.sleep(2) # تأخير بمقدار ثانيتين لتجنب الحظر المؤقت من خوادم Telegraph (Rate Limit)
-        else:
-            print(f"  ❌ فشل نشر وتجهيز صفحة الفصل {ch_num} على تليجرام.")
+            print(f"  💾 تم تحديث Firestore للفصل {ch_num}.")
+            time.sleep(2)
+            
+        except Exception as e:
+            print(f"  ❌ فشل نشر وتجهيز صفحة الفصل {ch_num}. الخطأ: {e}")
 
 if __name__ == "__main__":
     process_telegraph_publishing()
