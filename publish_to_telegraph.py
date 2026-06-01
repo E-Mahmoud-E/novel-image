@@ -22,16 +22,17 @@ db = firestore.client()
 # --- 2. إعدادات تليجرام المضافة (تُقرأ بأمان من بيئة العمل) ---
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
-
-# --- 3. إعدادات Telegraph ---
-telegraph_client = Telegraph()
+# --- 2. إعدادات Telegraph المحسنة والمضمونة ---
 TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_ACCESS_TOKEN')
+
 if TELEGRAPH_TOKEN:
-    # إسناد التوكن مباشرة للمكتبة بدون استخدام دالة غير موجودة
-    telegraph_client.access_token = TELEGRAPH_TOKEN
+    # تمرير التوكن مباشرة داخل القوسين أثناء تعريف الكائن
+    telegraph_client = Telegraph(access_token=TELEGRAPH_TOKEN)
 else:
-    # للعمل المحلي: إنشاء حساب تلقائي وتوليد توكن جديد فوراً
+    # للعمل المحلي: إنشاء كائن عادي ثم توليد حساب وتوكن تلقائي
+    telegraph_client = Telegraph()
     telegraph_client.create_account(short_name='Ma7moud')
+
 
 
 TARGET_NOVEL = "worldwide-simulation-era"
