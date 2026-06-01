@@ -31,7 +31,8 @@ else:
     telegraph_client = Telegraph()
     telegraph_client.create_account(short_name='Ma7moud')
 
-TARGET_NOVEL = "Worldwide Simulation Era"
+# 🎯 تم التحديث هنا ليطابق الاسم الفعلي في قاعدة بياناتك تماماً
+TARGET_NOVEL = "World Simulation Era" 
 AUTHOR_NAME = "Ma7moud Elmahdy"
 AUTHOR_URL = "https://t.me/NewStyleNovel"
 
@@ -53,18 +54,20 @@ def convert_to_telegraph_nodes(paragraphs, extracted_scenes):
     return nodes
 
 def process_telegraph_publishing():
-    # جلب جميع الفصول المترجمة للرواية المستهدفة
+    # البحث بالاسم الصحيح والمطابق
     chapters_query = db.collection('Chapters') \
         .where(filter=FieldFilter('Novel_Name', '==', TARGET_NOVEL)) \
-        .where(filter=FieldFilter('is_translated', '==', True)) \
         .stream()
     
     docs = list(chapters_query)
     
-    # ترتيب الفصول رقمياً
+    if not docs:
+        print(f"❌ لم يتم العثور على أي فصول في Firestore تحت اسم الرواية: '{TARGET_NOVEL}'")
+        return
+
     docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id)) or 0))
 
-    print(f"🚀 بدء فحص ونشر الفصول... تم جلب ({len(docs)}) فصل مترجم من Firestore.")
+    print(f"🚀 بدء فحص ونشر الفصول... تم جلب ({len(docs)}) فصل إجمالي من Firestore لـ {TARGET_NOVEL}.")
 
     published_count = 0
 
@@ -74,18 +77,20 @@ def process_telegraph_publishing():
         if not ch_num_str: continue
         ch_num = int(ch_num_str)
         
-        # التعديل الذكي هنا: إذا كان الحقل True يتم تخطيه، أما إذا كان False أو غير موجود (None) فسيتم معالجته ونشره
         if doc_data.get('is_published_telegraph') is True:
             continue
 
-        print(f"📦 جاري تحضير وصياغة مستند الفصل [{ch_num}]...")
-        
         content_ar = doc_data.get('content_ar', '')
-        if not content_ar:
-            print(f"  ⚠️ الفصل {ch_num} لا يحتوي على نص عربي مترجم، تخطي.")
+        is_trans_field = doc_data.get('is_translated', False)
+
+        if not is_trans_field and not content_ar:
             continue
 
+        print(f"📦 جاري تحضير وصياغة مستند الفصل [{ch_num}] وتجهيز الصور...")
+        
         paragraphs = [p.strip() for p in content_ar.split('\n') if p.strip() != ""]
+        if not paragraphs:
+            continue
         
         old_scenes = doc_data.get('scenes', []) or []
         new_scenes = doc_data.get('analysis_data', {}).get('scenes', []) or []
@@ -100,7 +105,6 @@ def process_telegraph_publishing():
         page_title = f"{doc_data.get('title', f'الفصل {ch_num}')}"
 
         try:
-            # 1. توليد صفحة Telegraph
             response = telegraph_client.create_page(
                 title=page_title,
                 author_name=AUTHOR_NAME,
@@ -110,7 +114,6 @@ def process_telegraph_publishing():
             telegraph_url = response['url']
             print(f"  ✅ تم إنشاء رابط Telegraph: {telegraph_url}")
             
-            # 2. إرسال الرابط إلى قناة تليجرام
             if TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID:
                 telegram_api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 message_text = f"📢 *تمت إضافة فصل جديد للرواية!*\n\n📖 *{page_title}*\n\nاقرأ الآن مباشرة عبر المعاينة الفورية السريعة وبدون إعلانات:\n{telegraph_url}"
@@ -125,20 +128,19 @@ def process_telegraph_publishing():
                 if telegram_res.status_code == 200:
                     print("  📢 تم إرسال الإشعار بنجاح إلى قناة تليجرام.")
                 else:
-                    print(f"  ❌ فشل إرسال الإشعار للقناة. كود: {telegram_res.status_code}")
+                    print(f"  ❌ فشل إرسال الإشعار للقناة. كود الخطأ: {telegram_res.status_code}")
             
-            # 3. تحديث أو إضافة الحقل في Firestore ليصبح True بشكل قطعي
             doc.reference.update({
                 "telegraph_url": telegraph_url,
                 "is_published_telegraph": True,
                 "published_telegraph_at": firestore.SERVER_TIMESTAMP
             })
-            print(f"  💾 تم إضافة وتحديث حقل النشر في Firestore للفصل {ch_num}.")
+            print(f"  💾 تم حفظ الرابط وحالة النشر بنجاح في Firestore للفصل {ch_num}.")
             published_count += 1
             time.sleep(2)
             
         except Exception as e:
-            print(f"  ❌ فشل نشر وتجهيز صفحة الفصل {ch_num}. الخطأ: {e}")
+            print(f"  ❌ فشل نشر وتجهيز صفحة الفصل {ch_num}. الخطأ الفني: {e}")
 
     print(f"🏁 تم الانتهاء! إجمالي الفصول الجديدة التي تم نشرها وتحديثها الآن هو: ({published_count}) فصل.")
 
