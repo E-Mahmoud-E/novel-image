@@ -35,7 +35,7 @@ else:
 
 
 
-TARGET_NOVEL = "worldwide-simulation-era"
+TARGET_NOVEL = "Worldwide Simulation Era"
 AUTHOR_NAME = "Ma7moud Elmahdy"
 AUTHOR_URL = "https://t.me/NewStyleNovel"
 
