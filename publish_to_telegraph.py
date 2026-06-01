@@ -27,9 +27,12 @@ TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 telegraph_client = Telegraph()
 TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_ACCESS_TOKEN')
 if TELEGRAPH_TOKEN:
-    telegraph_client.init_app(access_token=TELEGRAPH_TOKEN)
+    # إسناد التوكن مباشرة للمكتبة بدون استخدام دالة غير موجودة
+    telegraph_client.access_token = TELEGRAPH_TOKEN
 else:
+    # للعمل المحلي: إنشاء حساب تلقائي وتوليد توكن جديد فوراً
     telegraph_client.create_account(short_name='Ma7moud')
+
 
 TARGET_NOVEL = "worldwide-simulation-era"
 AUTHOR_NAME = "Ma7moud Elmahdy"
