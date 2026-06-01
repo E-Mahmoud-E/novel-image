@@ -1,7 +1,7 @@
 import os
 import json
 import time
-import requests # تم إضافة المكتبة لإرسال الرسائل عبر الـ API
+import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -19,21 +19,17 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# --- 2. إعدادات تليجرام المضافة (تُقرأ بأمان من بيئة العمل) ---
+# --- 2. إعدادات تليجرام ---
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
-# --- 2. إعدادات Telegraph المحسنة والمضمونة ---
-TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_ACCESS_TOKEN')
 
+# --- 3. إعدادات Telegraph ---
+TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_ACCESS_TOKEN')
 if TELEGRAPH_TOKEN:
-    # تمرير التوكن مباشرة داخل القوسين أثناء تعريف الكائن
     telegraph_client = Telegraph(access_token=TELEGRAPH_TOKEN)
 else:
-    # للعمل المحلي: إنشاء كائن عادي ثم توليد حساب وتوكن تلقائي
     telegraph_client = Telegraph()
     telegraph_client.create_account(short_name='Ma7moud')
-
-
 
 TARGET_NOVEL = "Worldwide Simulation Era"
 AUTHOR_NAME = "Ma7moud Elmahdy"
@@ -57,15 +53,20 @@ def convert_to_telegraph_nodes(paragraphs, extracted_scenes):
     return nodes
 
 def process_telegraph_publishing():
+    # جلب جميع الفصول المترجمة للرواية المستهدفة
     chapters_query = db.collection('Chapters') \
         .where(filter=FieldFilter('Novel_Name', '==', TARGET_NOVEL)) \
         .where(filter=FieldFilter('is_translated', '==', True)) \
         .stream()
     
     docs = list(chapters_query)
+    
+    # ترتيب الفصول رقمياً
     docs.sort(key=lambda x: int(''.join(filter(str.isdigit, x.id)) or 0))
 
-    print(f"🚀 بدء تجهيز ونشر الفصول... تم العثور على ({len(docs)}) فصل.")
+    print(f"🚀 بدء فحص ونشر الفصول... تم جلب ({len(docs)}) فصل مترجم من Firestore.")
+
+    published_count = 0
 
     for doc in docs:
         doc_data = doc.to_dict()
@@ -73,7 +74,8 @@ def process_telegraph_publishing():
         if not ch_num_str: continue
         ch_num = int(ch_num_str)
         
-        if doc_data.get('is_published_telegraph'):
+        # التعديل الذكي هنا: إذا كان الحقل True يتم تخطيه، أما إذا كان False أو غير موجود (None) فسيتم معالجته ونشره
+        if doc_data.get('is_published_telegraph') is True:
             continue
 
         print(f"📦 جاري تحضير وصياغة مستند الفصل [{ch_num}]...")
@@ -98,7 +100,7 @@ def process_telegraph_publishing():
         page_title = f"{doc_data.get('title', f'الفصل {ch_num}')}"
 
         try:
-            # أولاً: توليد صفحة المعاينة الفورية
+            # 1. توليد صفحة Telegraph
             response = telegraph_client.create_page(
                 title=page_title,
                 author_name=AUTHOR_NAME,
@@ -108,11 +110,9 @@ def process_telegraph_publishing():
             telegraph_url = response['url']
             print(f"  ✅ تم إنشاء رابط Telegraph: {telegraph_url}")
             
-            # ثانياً (الزيادة هنا): إرسال الرابط فوراً إلى قناة التليجرام عبر البوت
+            # 2. إرسال الرابط إلى قناة تليجرام
             if TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID:
                 telegram_api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                
-                # نص الرسالة التي ستظهر للمشاهدين في القناة
                 message_text = f"📢 *تمت إضافة فصل جديد للرواية!*\n\n📖 *{page_title}*\n\nاقرأ الآن مباشرة عبر المعاينة الفورية السريعة وبدون إعلانات:\n{telegraph_url}"
                 
                 payload = {
@@ -126,20 +126,21 @@ def process_telegraph_publishing():
                     print("  📢 تم إرسال الإشعار بنجاح إلى قناة تليجرام.")
                 else:
                     print(f"  ❌ فشل إرسال الإشعار للقناة. كود: {telegram_res.status_code}")
-            else:
-                print("  ⚠️ تخطي إرسال الإشعار لتليجرام لعدم وجود توكن البوت أو معرف القناة في البيئة الحالية (عمل محلي).")
             
-            # ثالثاً: تحديث المستند في Firestore بعد النشر الفعلي والنجاح كاملاً
+            # 3. تحديث أو إضافة الحقل في Firestore ليصبح True بشكل قطعي
             doc.reference.update({
                 "telegraph_url": telegraph_url,
                 "is_published_telegraph": True,
                 "published_telegraph_at": firestore.SERVER_TIMESTAMP
             })
-            print(f"  💾 تم تحديث Firestore للفصل {ch_num}.")
+            print(f"  💾 تم إضافة وتحديث حقل النشر في Firestore للفصل {ch_num}.")
+            published_count += 1
             time.sleep(2)
             
         except Exception as e:
             print(f"  ❌ فشل نشر وتجهيز صفحة الفصل {ch_num}. الخطأ: {e}")
+
+    print(f"🏁 تم الانتهاء! إجمالي الفصول الجديدة التي تم نشرها وتحديثها الآن هو: ({published_count}) فصل.")
 
 if __name__ == "__main__":
     process_telegraph_publishing()
